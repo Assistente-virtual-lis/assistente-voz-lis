@@ -62,7 +62,7 @@ def transcrever_audio():
 
         # Mantém o histórico curto para não estourar a memória
         if len(chat.history) > 10:
-            historico_dispositivos[device_id] = genai.GenerativeModel('gemini-3.6-flash').start_chat(history=chat.history[-6:])
+            historico_dispositivos[device_id] = genai.GenerativeModel('gemini-3.5-flash').start_chat(history=chat.history[-6:])
 
         return jsonify({"status": "sucesso", "texto": texto_resposta}), 200
 
