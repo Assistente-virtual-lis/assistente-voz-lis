@@ -45,7 +45,7 @@ def transcrever_audio():
 
         # Cria ou recupera a sessão de chat específica desse dispositivo
         if device_id not in historico_dispositivos:
-            model = genai.GenerativeModel('gemini-3.6-flash')
+            model = genai.GenerativeModel('gemini-3.5-flash')
             historico_dispositivos[device_id] = model.start_chat(history=[])
         
         chat = historico_dispositivos[device_id]
