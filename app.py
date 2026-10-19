@@ -110,10 +110,14 @@ def transcrever_audio():
         pcm_16k = audio.raw_data
 
         # 4. ENVIA O PCM DE VOLTA PARA O ESP32
-        resp = send_file(io.BytesIO(pcm_16k), mimetype='application/octet-stream')
-        resp.headers['X-Emocao'] = emocao
-        print(f"--- Emoção do Gemini: {emocao} ---")
-        return resp
+        # Formato: [10 bytes de texto da emoção][Resto do áudio PCM]
+        emocao_padded = emocao.ljust(10, ' ').encode('utf-8')[:10]
+        
+        # Cria o arquivo final juntando a emoção + áudio
+        payload_final = emocao_padded + pcm_16k
+
+        # Envia como um arquivo octet-stream simples
+        return app.response_class(payload_final, mimetype='application/octet-stream')
 
     except Exception as e:
         print(f"Erro: {e}")
