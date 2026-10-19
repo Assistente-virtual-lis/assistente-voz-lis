@@ -45,30 +45,17 @@ def transcrever_audio():
 
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         prompt = (
-            "Você é a LIS (Local Intelligent System), uma assistente virtual simpática. "
-            "O áudio pode conter silêncio ou ruído de fundo. Ignore isso. "
-            "Se você ouvir o nome da assistente (aceite 'LIS', 'lis', 'Liz', 'lisi', 'Alice') ou o comando de escape 'escuta', "
-            "responda à pergunta do usuário em português de forma direta e ultra curta. "
-            "Se você NÃO ouvir nenhum desses nomes, responda APENAS a palavra 'IGNORAR'. "
-            "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA destas emoções: "
-            "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
-            "Exemplo: 'A capital é Belo Horizonte.|ALEGRIA'"
+            "Transcreva o áudio e responda em português de forma curta. "
+            "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA das seguintes emoções: "
+            "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO."
         )
-        
         response = model_chat.generate_content([
             prompt,
             {"mime_type": "audio/wav", "data": audio_b64}
         ])
         
         texto_completo = response.text.strip()
-        print(f"Resposta bruta do Gemini: {texto_completo}")
-
-        # Verifica se o Gemini decidiu ignorar
-        if "IGNORAR" in texto_completo:
-            resp = send_file(io.BytesIO(b""), mimetype='application/octet-stream')
-            resp.headers['X-Emocao'] = "NEUTRO"
-            return resp
-
+        
         # Separa o texto da emoção
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
@@ -76,14 +63,8 @@ def transcrever_audio():
             texto_para_falar = texto_completo
             emocao = "NEUTRO"
 
-        texto_para_falar = texto_para_falar.replace("IGNORAR", "").strip()
-
-        if not texto_para_falar:
-             resp = send_file(io.BytesIO(b""), mimetype='application/octet-stream')
-             resp.headers['X-Emocao'] = "NEUTRO"
-             return resp
-
-        # 2. TTS VIA EDGE (Microsoft) - Gratuito e sem limite baixo
+        # 2. TTS VIA EDGE (Microsoft)
+        # Usando a voz neural brasileira Francisca
         voice = "pt-BR-FranciscaNeural"
         
         async def gerar_audio():
@@ -94,6 +75,7 @@ def transcrever_audio():
                     audio_bytes += chunk["data"]
             return audio_bytes
 
+        # Executa a função assíncrona do edge-tts
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_mp3 = loop.run_until_complete(gerar_audio())
@@ -107,9 +89,11 @@ def transcrever_audio():
         audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
         
-        # Filtro passa-baixa para suavizar e atenuação para não estourar o MAX98357
+        # Filtro passa-baixa para suavizar (opcional)
         audio = audio.low_pass_filter(3000)
-        audio = audio - 18  # Ajuste de volume (o seu ajuste perfeito)
+        
+        # ATENUAÇÃO: Reduz o volume para não estourar o MAX98357
+        audio = audio - 10  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
         
         pcm_16k = audio.raw_data
 
