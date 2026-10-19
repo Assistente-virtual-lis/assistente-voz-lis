@@ -3,8 +3,8 @@
 """
 Created on Sun Oct 18 18:57:18 2026
 
-@author: Elias Oliveira Serqueira & Lislei Jorge Patrizzi Martins
-elias.serqueira@uftm.edu.br
+@authors: Elias Oliveira Serqueira & Lislei Jorge Patrizzi Martins
+@e-mail: elias.serqueira@uftm.edu.br
 """
 
 import os
@@ -84,20 +84,26 @@ def transcrever_audio():
         
         tts_response = model_tts.generate_content(
             f"Fale de forma natural em português: {texto_para_falar}",
+            # A correção está aqui: use response_format e speech_config dentro de generation_config
             generation_config={
-                "response_modalities": ["AUDIO"],
+                "response_format": {"type": "audio"},
                 "speech_config": {
                     "voice_config": {"prebuilt_voice_config": {"voice_name": "Kore"}}
                 }
             }
         )
         
-        # 3. Extrai o áudio e converte para 16kHz
+        # 3. Extrai o áudio (a estrutura de resposta pode variar)
         audio_bytes_24k = None
-        for part in tts_response.candidates[0].content.parts:
-            if hasattr(part, 'inline_data') and part.inline_data:
-                audio_bytes_24k = part.inline_data.data
-                break
+        # Tenta extrair do local correto conforme a documentação
+        if hasattr(tts_response, 'output_audio') and tts_response.output_audio:
+            audio_bytes_24k = base64.b64decode(tts_response.output_audio.data)
+        else:
+            # Fallback para a estrutura antiga de parts
+            for part in tts_response.candidates[0].content.parts:
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    audio_bytes_24k = part.inline_data.data
+                    break
         
         if not audio_bytes_24k:
             return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
