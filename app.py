@@ -43,7 +43,7 @@ def transcrever_audio():
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
 
-        model_chat = genai.GenerativeModel('gemini-3.5-flash')
+        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         prompt = (
             "Você é a LIS (Local Intelligent System), uma assistente virtual MUITO expressiva. "
             "Se o usuário não disser 'LIS', responda APENAS 'IGNORAR'. "
