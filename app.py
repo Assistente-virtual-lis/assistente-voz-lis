@@ -52,13 +52,21 @@ def transcrever_audio():
             "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
             "Exemplo: 'O dia esta lindamente ensolarado.|ALEGRIA'"
         )
+        
         response = model_chat.generate_content([
             prompt,
             {"mime_type": "audio/wav", "data": audio_b64}
         ])
         
         texto_completo = response.text.strip()
-        
+        print(f"Resposta bruta do Gemini: {texto_completo}")
+
+        # Verifica se o Gemini decidiu ignorar
+        if "IGNORAR" in texto_completo:
+            resp = send_file(io.BytesIO(b""), mimetype='application/octet-stream')
+            resp.headers['X-Emocao'] = "NEUTRO"
+            return resp
+
         # Separa o texto da emoção
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
@@ -66,8 +74,14 @@ def transcrever_audio():
             texto_para_falar = texto_completo
             emocao = "NEUTRO"
 
-        # 2. TTS VIA EDGE (Microsoft)
-        # Usando a voz neural brasileira Francisca
+        texto_para_falar = texto_para_falar.replace("IGNORAR", "").strip()
+
+        if not texto_para_falar:
+             resp = send_file(io.BytesIO(b""), mimetype='application/octet-stream')
+             resp.headers['X-Emocao'] = "NEUTRO"
+             return resp
+
+        # 2. TTS VIA EDGE (Microsoft) - Gratuito e sem limite baixo
         voice = "pt-BR-FranciscaNeural"
         
         async def gerar_audio():
@@ -78,7 +92,6 @@ def transcrever_audio():
                     audio_bytes += chunk["data"]
             return audio_bytes
 
-        # Executa a função assíncrona do edge-tts
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_mp3 = loop.run_until_complete(gerar_audio())
@@ -92,11 +105,9 @@ def transcrever_audio():
         audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
         
-        # Filtro passa-baixa para suavizar (opcional)
+        # Filtro passa-baixa para suavizar e atenuação para não estourar o MAX98357
         audio = audio.low_pass_filter(3000)
-        
-        # ATENUAÇÃO: Reduz o volume para não estourar o MAX98357
-        audio = audio - 18  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
+        audio = audio - 18  # Ajuste de volume (o seu ajuste perfeito)
         
         pcm_16k = audio.raw_data
 
