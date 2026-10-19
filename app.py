@@ -45,9 +45,11 @@ def transcrever_audio():
 
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         prompt = (
-            "Transcreva o áudio e responda em português de forma curta. "
-            "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA das seguintes emoções: "
-            "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO."
+            "Você é a LIS (Local Intelligent System), uma assistente virtual simpática. "
+            "O usuário falou algo. Responda à pergunta dele em português de forma direta e ultra curta. "
+            "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA destas emoções: "
+            "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
+            "Exemplo: 'O dia esta lindamente ensolarado.|ALEGRIA'"
         )
         response = model_chat.generate_content([
             prompt,
