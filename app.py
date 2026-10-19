@@ -53,8 +53,9 @@ def transcrever_audio():
             "Se for algo triste, use TRISTEZA. Se for uma surpresa, ESPANTO. "
             "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA destas emoções: "
             "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
-            "Exemplo: 'O dia esta lindamente ensolarado.|ALEGRIA'"
-            "Exemplo: 'Bom dia! Estou pronta para ajudar!|ALEGRIA'"
+            "Exemplo 1: 'O dia esta lindamente ensolarado.|ALEGRIA' "
+            "Exemplo 2: 'Bom dia! Estou pronta para ajudar!|ALEGRIA' "
+            "NUNCA se esqueça de colocar a barra vertical e a emoção no final da resposta."
         )
         response = model_chat.generate_content([
             prompt,
