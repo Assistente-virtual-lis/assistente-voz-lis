@@ -3,8 +3,10 @@
 """
 Created on Sun Oct 18 18:57:18 2026
 
-@author: elias
+@author: Elias Oliveira Serqueira & Lislei Jorge Patrizzi Martins
+elias.serqueira@uftm.edu.br
 """
+
 import os
 import io
 import wave
@@ -25,18 +27,16 @@ def pcm_to_wav(pcm_bytes, sample_rate=16000, channels=1, sample_width=2):
     return wav_io.getvalue()
 
 def resample_wav_24k_to_16k(wav_bytes_24k):
-    """Converte WAV de 24kHz para 16kHz (simples decimação para evitar chiado)"""
+    """Converte WAV de 24kHz (padrão do TTS) para 16kHz (padrão do MAX98357)"""
     wav_in = wave.open(io.BytesIO(wav_bytes_24k), 'rb')
     frames = wav_in.readframes(wav_in.getnframes())
     
-    # Converte bytes para array de int16
     import array
     samples_24k = array.array('h', frames)
     
-    # Decimação: pega 2 de cada 3 amostras (24k -> 16k)
-    samples_16k = array.array('h', [samples_24k[i] for i in range(0, len(samples_24k), 3)][:int(len(samples_24k)/1.5)])
+    # Decimação simples: pega 2 de cada 3 amostras (24k -> 16k)
+    samples_16k = array.array('h', [samples_24k[i] for i in range(0, len(samples_24k), 3)])
     
-    # Cria novo WAV
     wav_out = io.BytesIO()
     with wave.open(wav_out, 'wb') as wav_file:
         wav_file.setnchannels(1)
@@ -53,11 +53,11 @@ def transcrever_audio():
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
     try:
-        # 1. Transcrição e resposta do Gemini (como já funciona)
+        # 1. TRANSCRIÇÃO E RESPOSTA (Modelo de Conversa)
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
 
-        model = genai.GenerativeModel('gemini-3.5-flash-lite')
+        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         
         prompt = (
             "Transcreva o áudio e responda em português de forma curta. "
@@ -65,28 +65,29 @@ def transcrever_audio():
             "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO."
         )
         
-        response = model.generate_content([
+        response = model_chat.generate_content([
             prompt,
             {"mime_type": "audio/wav", "data": audio_b64}
         ])
         
         texto_completo = response.text.strip()
         
-        # Separa o texto da emoção para o TTS (o TTS não deve falar a emoção)
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
         else:
             texto_para_falar = texto_completo
             emocao = "NEUTRO"
 
-        # 2. Chama o TTS do Gemini
-        tts_response = model.generate_content(
-            f"Fale de forma natural: {texto_para_falar}",
+        # 2. GERAÇÃO DE ÁUDIO (Modelo TTS Especializado)
+        # A documentação exige o uso de um modelo específico para TTS
+        model_tts = genai.GenerativeModel('gemini-3.1-flash-tts-preview')
+        
+        tts_response = model_tts.generate_content(
+            f"Fale de forma natural em português: {texto_para_falar}",
             generation_config={
                 "response_modalities": ["AUDIO"],
                 "speech_config": {
-                    "voice_config": {"prebuilt_voice_config": {"voice_name": "Kore"}},
-                    "language_code": "pt-BR"
+                    "voice_config": {"prebuilt_voice_config": {"voice_name": "Kore"}}
                 }
             }
         )
@@ -101,10 +102,8 @@ def transcrever_audio():
         if not audio_bytes_24k:
             return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
 
-        # Converte 24kHz para 16kHz
         audio_16k = resample_wav_24k_to_16k(audio_bytes_24k)
         
-        # 4. Retorna o WAV + a emoção no header
         resp = send_file(io.BytesIO(audio_16k), mimetype='audio/wav')
         resp.headers['X-Emocao'] = emocao
         return resp
