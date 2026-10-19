@@ -93,7 +93,7 @@ def transcrever_audio():
         audio = audio.low_pass_filter(3000)
         
         # ATENUAÇÃO: Reduz o volume para não estourar o MAX98357
-        audio = audio - 10  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
+        audio = audio - 18  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
         
         pcm_16k = audio.raw_data
 
