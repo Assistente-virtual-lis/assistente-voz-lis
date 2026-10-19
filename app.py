@@ -77,6 +77,13 @@ def transcrever_audio():
         audio = AudioSegment.from_file(io.BytesIO(audio_bytes_24k), format="wav")
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
         
+        # Aplica filtro passa-baixa (opcional, mas bom para clareza)
+        audio = audio.low_pass_filter(3000)
+        
+        # --- AQUI ESTÁ A CORREÇÃO ---
+        # Reduz o volume em 10 dB para evitar o clipping (estouro)
+        audio = audio - 10 
+        
         # Exporta como PCM puro (sem cabeçalho)
         pcm_16k = audio.raw_data
 
