@@ -35,10 +35,15 @@ def transcrever_audio():
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
 
-        # Usando o modelo Lite que tem cota de 500 req/dia
         model = genai.GenerativeModel('gemini-3.5-flash-lite')
         
-        prompt = "Transcreva o que é dito neste áudio em português e responda de forma amigável. Se não houver fala, responda 'Silêncio'."
+        # O prompt agora obriga o robô a escolher uma emoção da nossa lista
+        prompt = (
+            "Transcreva o áudio e responda em português de forma curta. "
+            "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA das seguintes emoções "
+            "que melhor representa o tom da sua resposta: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
+            "Exemplo: 'Olá, como vai?|ALEGRIA'"
+        )
         
         response = model.generate_content([
             prompt,
