@@ -65,6 +65,8 @@ def transcrever_audio():
         ])
         
         texto_completo = response.text.strip()
+
+        print(f"--- O Gemini respondeu: {texto_completo} ---")
         
         # Separa o texto da emoção
         if '|' in texto_completo:
