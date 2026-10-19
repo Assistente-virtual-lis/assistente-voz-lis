@@ -9,18 +9,21 @@ Created on Sun Oct 18 18:57:18 2026
 
 import os
 import io
+import wave
 import base64
+import asyncio
 import requests
 from flask import Flask, request, jsonify, send_file
 import google.generativeai as genai
 from pydub import AudioSegment
+import edge_tts
 
 app = Flask(__name__)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
 def pcm_to_wav(pcm_bytes, sample_rate=16000, channels=1, sample_width=2):
-    import wave
+    """Converte PCM bruto do ESP32 para WAV para o Gemini entender"""
     wav_io = io.BytesIO()
     with wave.open(wav_io, 'wb') as wav_file:
         wav_file.setnchannels(channels)
@@ -36,7 +39,7 @@ def transcrever_audio():
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
     try:
-        # 1. Transcrição e Resposta
+        # 1. TRANSCRIÇÃO E RESPOSTA (Gemini)
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
 
@@ -46,48 +49,55 @@ def transcrever_audio():
             "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA das seguintes emoções: "
             "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO."
         )
-        response = model_chat.generate_content([prompt, {"mime_type": "audio/wav", "data": audio_b64}])
+        response = model_chat.generate_content([
+            prompt,
+            {"mime_type": "audio/wav", "data": audio_b64}
+        ])
+        
         texto_completo = response.text.strip()
         
+        # Separa o texto da emoção
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
         else:
             texto_para_falar = texto_completo
             emocao = "NEUTRO"
 
-        # 2. TTS via REST
-        tts_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent?key={API_KEY}"
-        payload = {
-            "contents": [{"parts": [{"text": texto_para_falar}]}],
-            "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": "Kore"}}}
-            }
-        }
+        # 2. TTS VIA EDGE (Microsoft)
+        # Usando a voz neural brasileira Francisca
+        voice = "pt-BR-FranciscaNeural"
         
-        tts_resp = requests.post(tts_url, json=payload, timeout=30)
-        if tts_resp.status_code != 200:
-            return jsonify({"status": "erro", "detalhes": tts_resp.text}), 500
+        async def gerar_audio():
+            communicate = edge_tts.Communicate(texto_para_falar, voice)
+            audio_bytes = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+            return audio_bytes
 
-        # Extrai o áudio base64 (que o Gemini retorna como WAV)
-        audio_b64_24k = tts_resp.json()['candidates'][0]['content']['parts'][0]['inlineData']['data']
-        audio_bytes_24k = base64.b64decode(audio_b64_24k)
+        # Executa a função assíncrona do edge-tts
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        audio_mp3 = loop.run_until_complete(gerar_audio())
+        loop.close()
 
-        # 3. Conversão PERFEITA usando pydub
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes_24k), format="wav")
+        if not audio_mp3:
+            return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
+
+        # 3. CONVERSÃO E TRATAMENTO (Pydub)
+        # Converte MP3 (Edge) para PCM 16kHz 16bits
+        audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
         
-        # Aplica filtro passa-baixa (opcional, mas bom para clareza)
+        # Filtro passa-baixa para suavizar (opcional)
         audio = audio.low_pass_filter(3000)
         
-        # --- AQUI ESTÁ A CORREÇÃO ---
-        # Reduz o volume em 10 dB para evitar o clipping (estouro)
-        audio = audio - 10 
+        # ATENUAÇÃO: Reduz o volume para não estourar o MAX98357
+        audio = audio - 10  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
         
-        # Exporta como PCM puro (sem cabeçalho)
         pcm_16k = audio.raw_data
 
-        # 4. Envia o PCM puro de volta
+        # 4. ENVIA O PCM DE VOLTA PARA O ESP32
         resp = send_file(io.BytesIO(pcm_16k), mimetype='application/octet-stream')
         resp.headers['X-Emocao'] = emocao
         return resp
