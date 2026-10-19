@@ -46,11 +46,13 @@ def transcrever_audio():
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         prompt = (
             "Você é a LIS (Local Intelligent System), uma assistente virtual simpática. "
-            "Se o usuário disser o seu nome 'lis' ou 'liz' seguido de uma pergunta, responda à pergunta dele em português de forma direta e ultra curta. "
-            "Se o usuário não disser 'lis' ou 'liz', responda APENAS a palavra 'IGNORAR'. "
+            "O áudio pode conter silêncio ou ruído de fundo. Ignore isso. "
+            "Se você ouvir o nome da assistente (aceite 'LIS', 'lis', 'Liz', 'lisi', 'Alice') ou o comando de escape 'escuta', "
+            "responda à pergunta do usuário em português de forma direta e ultra curta. "
+            "Se você NÃO ouvir nenhum desses nomes, responda APENAS a palavra 'IGNORAR'. "
             "No final da sua resposta, adicione uma barra vertical '|' seguida por UMA destas emoções: "
             "ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
-            "Exemplo: 'O dia esta lindamente ensolarado.|ALEGRIA'"
+            "Exemplo: 'A capital é Belo Horizonte.|ALEGRIA'"
         )
         
         response = model_chat.generate_content([
