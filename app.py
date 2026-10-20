@@ -65,7 +65,6 @@ def transcrever_audio():
         ])
         
         texto_completo = response.text.strip()
-        print(f"************* Pergunta: {pcm_data} ********")
 
         print(f"--- O Gemini respondeu: {texto_completo} ---")
         
