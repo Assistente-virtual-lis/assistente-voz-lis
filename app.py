@@ -83,7 +83,9 @@ def transcrever_audio():
         
         response_asr = model_asr.generate_content([
             asr_prompt,
-            {"mime_type": "audio/wav", "data": audio_b64}
+            {"mime_type": "audio/wav",
+             "data": audio_b64 ,
+             "timeout": 30 }
         ])
         texto_usuario = response_asr.text.strip()
         print(f"--- Usuário disse: {texto_usuario} ---")
