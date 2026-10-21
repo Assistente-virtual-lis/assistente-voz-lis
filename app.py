@@ -6,7 +6,6 @@ Created on Sun Oct 18 18:57:18 2026
 @authors: Elias Oliveira Serqueira & Lislei Jorge Patrizzi Martins
 @e-mail: elias.serqueira@uftm.edu.br
 """
- 
 import os
 import io
 import wave
