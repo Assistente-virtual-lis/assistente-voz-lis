@@ -68,17 +68,15 @@ def transcrever_audio():
     if not pcm_data:
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
-    # --- LÊ OS SENSORES DOS HEADERS ---
+    # LÊ OS SENSORES DOS HEADERS (O ESP32 já está enviando isso)
     temp_atual = request.headers.get("X-Temperatura", "Desconhecida")
     umid_atual = request.headers.get("X-Umidade", "Desconhecida")
-    # ----------------------------------
-    
+
     try:
         # 1. TRANSCRIÇÃO DO ÁUDIO DO USUÁRIO
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
         
-        # Modelo rápido para apenas transcrever (economiza tokens)
         model_asr = genai.GenerativeModel('gemini-3.5-flash-lite')
         asr_prompt = "Transcreva exatamente o que o usuário disse neste áudio em português. Se não houver fala, retorne apenas '...'."
         
@@ -96,7 +94,7 @@ def transcrever_audio():
         linhas = cur.fetchall()
         historico_recente = list(reversed(linhas))
         
-        # SALVA O QUE O USUÁRIO ACABOU DE FALAR NO BANCO
+        # SALVA O QUE O USUÁRIO FALOU
         if texto_usuario != "..." and texto_usuario != "":
             cur.execute(
                 "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
@@ -106,7 +104,7 @@ def transcrever_audio():
         cur.close()
         conn.close()
 
-        # 3. MONTAR O PROMPT COM MEMÓRIA
+        # 3. MONTAR O PROMPT COM MEMÓRIA E SENSORES
         contexto = ""
         for role, content in historico_recente:
             if role == "user":
@@ -114,27 +112,32 @@ def transcrever_audio():
             else:
                 contexto += f"LIS: {content}\n"
 
+        # AQUI ESTÁ A CORREÇÃO DOS SENSORES E DA FLEXIBILIDADE DA PALAVRA "LIS"
         prompt_completo = (
             "Você é a LIS (Local Intelligent System), uma assistente virtual MUITO expressiva. "
-            "Se o usuário não disser 'LIS', fique em silêncio seguido da emoção |ESPANTO. "
-            "Se disser 'LIS', responda de forma ultra curta. "
+            "Se o usuário falar algo que claramente não é para você (como apenas um ruído, 'uuu', ou conversa paralela), "
+            "fique em silêncio seguido da emoção |ESPANTO. "
+            "Se o usuário fizer uma pergunta ou falar com você (mesmo que a palavra 'LIS' não seja transcrita perfeitamente), responda de forma ultra curta. "
             "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
             "Escolha a emoção: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
             f"INFORMAÇÃO DO AMBIENTE FÍSICO AGORA: Temperatura = {temp_atual}°C, Umidade = {umid_atual}%.\n"
-            "Use esses dados se o usuário perguntar sobre o clima no local.\n\n"            
+            "Se o usuário perguntar sobre o clima, temperatura ou umidade, USE ESSES DADOS REAIS acima.\n"
+            f"Considere {temp_atual}°C acima de 30°C como calor extremo.\n"
+            f"Considere {umid_atual}% abaixo de 60% como umidade baixa.\n"
+            f"Considere {umid_atual}% abaixo de 25% como umidade de alerta.\n"
+            f"Se a umidade estiver baixa ou de alerta, recomende beber muita água!\n\n"
             f"HISTÓRICO DA CONVERSA:\n{contexto}\n"
             f"Usuário: {texto_usuario}\n"
             "LIS: "
         )
 
-        # 4. CHAMAR O GEMINI PARA RESPONDER (com base no histórico e texto atual)
+        # 4. CHAMAR O GEMINI PARA RESPONDER
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         response = model_chat.generate_content(prompt_completo)
         
         texto_completo = response.text.strip()
         print(f"--- O Gemini respondeu: {texto_completo} ---")
         
-        # Separa o texto da emoção
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
         else:
@@ -142,13 +145,11 @@ def transcrever_audio():
             emocao = "NEUTRO"
 
         # 5. TTS VIA EDGE (Microsoft)
-        # Verifica se há texto para falar. Se for vazio (só emoção), pula o TTS.
         if texto_para_falar.strip() == "":
             print("Sem texto para falar, retornando apenas a emoção.")
-            pcm_16k = b"" # Áudio vazio
+            pcm_16k = b"" 
         else:
             voice = "pt-BR-FranciscaNeural"
-            
             async def gerar_audio():
                 communicate = edge_tts.Communicate(texto_para_falar, voice)
                 audio_bytes = b""
@@ -165,14 +166,14 @@ def transcrever_audio():
             if not audio_mp3:
                 return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
 
-            # 6. CONVERSÃO E TRATAMENTO (Pydub)
+            # 6. CONVERSÃO E TRATAMENTO
             audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
             audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
             audio = audio.low_pass_filter(3000)
-            audio = audio - 18  # Atenuação de volume
+            audio = audio - 18
             pcm_16k = audio.raw_data
 
-        # 7. SALVAR RESPOSTA DA LIS NO BANCO (Apenas se houver texto)
+        # 7. SALVAR RESPOSTA NO BANCO
         if texto_para_falar.strip() != "":
             conn = get_db_connection()
             cur = conn.cursor()
@@ -184,7 +185,7 @@ def transcrever_audio():
             cur.close()
             conn.close()
         
-        # 8. ENVIA O PCM DE VOLTA PARA O ESP32
+        # 8. ENVIA PARA O ESP32
         emocao_padded = emocao.ljust(10, ' ').encode('utf-8')[:10]
         payload_final = emocao_padded + pcm_16k
 
