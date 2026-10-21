@@ -137,7 +137,7 @@ def transcrever_audio():
         # Adicione o parâmetro request_options para forçar um timeout interno
         response = model_chat.generate_content(
             prompt_completo,
-            request_options={"timeout": 30} # 30 segundos máximo para o Gemini
+            {"timeout": 30} # 30 segundos máximo para o Gemini
         )
         
         
