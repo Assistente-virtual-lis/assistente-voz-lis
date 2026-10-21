@@ -136,41 +136,47 @@ def transcrever_audio():
             emocao = "NEUTRO"
 
         # 5. TTS VIA EDGE (Microsoft)
-        voice = "pt-BR-FranciscaNeural"
-        
-        async def gerar_audio():
-            communicate = edge_tts.Communicate(texto_para_falar, voice)
-            audio_bytes = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
-            return audio_bytes
+        # Verifica se há texto para falar. Se for vazio (só emoção), pula o TTS.
+        if texto_para_falar.strip() == "":
+            print("Sem texto para falar, retornando apenas a emoção.")
+            pcm_16k = b"" # Áudio vazio
+        else:
+            voice = "pt-BR-FranciscaNeural"
+            
+            async def gerar_audio():
+                communicate = edge_tts.Communicate(texto_para_falar, voice)
+                audio_bytes = b""
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_bytes += chunk["data"]
+                return audio_bytes
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        audio_mp3 = loop.run_until_complete(gerar_audio())
-        loop.close()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            audio_mp3 = loop.run_until_complete(gerar_audio())
+            loop.close()
 
-        if not audio_mp3:
-            return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
+            if not audio_mp3:
+                return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
 
-        # 6. CONVERSÃO E TRATAMENTO (Pydub)
-        audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
-        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-        audio = audio.low_pass_filter(3000)
-        audio = audio - 18  # Atenuação de volume
-        pcm_16k = audio.raw_data
+            # 6. CONVERSÃO E TRATAMENTO (Pydub)
+            audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
+            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+            audio = audio.low_pass_filter(3000)
+            audio = audio - 18  # Atenuação de volume
+            pcm_16k = audio.raw_data
 
-        # 7. SALVAR RESPOSTA DA LIS NO BANCO
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
-            ("assistant", texto_para_falar)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        # 7. SALVAR RESPOSTA DA LIS NO BANCO (Apenas se houver texto)
+        if texto_para_falar.strip() != "":
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
+                ("assistant", texto_para_falar)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
         
         # 8. ENVIA O PCM DE VOLTA PARA O ESP32
         emocao_padded = emocao.ljust(10, ' ').encode('utf-8')[:10]
