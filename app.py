@@ -22,6 +22,12 @@ app = Flask(__name__)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Cria o modelo uma única vez
+model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
+
+# Cria uma sessão de chat persistente em memória
+chat_session = model_chat.start_chat(history=[])
+
 def pcm_to_wav(pcm_bytes, sample_rate=16000, channels=1, sample_width=2):
     """Converte PCM bruto do ESP32 para WAV para o Gemini entender"""
     wav_io = io.BytesIO()
@@ -34,6 +40,8 @@ def pcm_to_wav(pcm_bytes, sample_rate=16000, channels=1, sample_width=2):
 
 @app.route('/transcrever', methods=['POST'])
 def transcrever_audio():
+    global chat_session # Permite modificar a sessão global
+    
     pcm_data = request.data
     if not pcm_data:
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
@@ -43,27 +51,24 @@ def transcrever_audio():
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
 
-        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
+
+
         prompt = (
             "Você é a LIS (Local Intelligent System), uma assistente virtual MUITO expressiva. "
-            "Se o usuário não disser 'LIS', fique em silêncio seguido da emoção |ESPANTO . "
+            "Se o usuário não disser 'LIS', fique em silêncio seguido da emoção ESPANTO . "
             "Se disser 'LIS', responda de forma ultra curta. "
             "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
             "Escolha a emoção que combina com o contexto: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
             "Se o usuário te cumprimentar (bom dia, boa tarde), seja muito feliz e use ALEGRIA ou EXALTADO. "
-            "Se fizer uma pergunta comum, use NEUTRO. "
-            "Exemplos de como você deve responder: "
             "Usuário: LIS, bom dia! -> Sua resposta: 'Bom dia! Como posso ajudar?|ALEGRIA' "
-            "Usuário: LIS, qual a capital do Brasil? -> Sua resposta: 'A capital é Brasília.|NEUTRO' "
-            "Usuário: LIS, me conte uma piada! -> Sua resposta: 'O que o pato disse para a pata? Vem quá!|ALEGRIA' "
-            "Usuário: LIS, estou triste. -> Sua resposta: 'Poxa, sinto muito.|TRISTEZA' "
             "Agora responda à pergunta do usuário seguindo EXATAMENTE esse formato."
         )
-        response = model_chat.generate_content([
-            prompt,
+        # Envia a mensagem para a sessão de chat (que já tem memória)
+        response = chat_session.send_message([
+            prompt, # O prompt pode ser repetido ou enviado apenas na primeira vez
             {"mime_type": "audio/wav", "data": audio_b64}
         ])
-        
+                
         texto_completo = response.text.strip()
 
         print(f"--- O Gemini respondeu: {texto_completo} ---")
