@@ -84,8 +84,7 @@ def transcrever_audio():
         response_asr = model_asr.generate_content([
             asr_prompt,
             {"mime_type": "audio/wav",
-             "data": audio_b64 ,
-             "timeout": 30 }
+             "data": audio_b64}
         ])
         texto_usuario = response_asr.text.strip()
         print(f"--- Usuário disse: {texto_usuario} ---")
@@ -138,9 +137,8 @@ def transcrever_audio():
         # No seu app.py, onde você chama o model_chat.generate_content
         # Adicione o parâmetro request_options para forçar um timeout interno
         response = model_chat.generate_content(
-            prompt_completo,
-            {"timeout": 30} # 30 segundos máximo para o Gemini
-        )
+            prompt_completo
+            )
         
         
         texto_completo = response.text.strip()
