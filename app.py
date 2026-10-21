@@ -78,7 +78,7 @@ def transcrever_audio():
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
         
         # Modelo rápido para apenas transcrever (economiza tokens)
-        model_asr = genai.GenerativeModel('gemini-3.5-flash-lite')
+        model_asr = genai.GenerativeModel('gemini-3.5-flash-lite', transport='rest')
         asr_prompt = "Transcreva exatamente o que o usuário disse neste áudio em português. Se não houver fala, retorne apenas '...'."
         
         response_asr = model_asr.generate_content([
@@ -133,7 +133,7 @@ def transcrever_audio():
         )
 
         # 4. CHAMAR O GEMINI PARA RESPONDER (com base no histórico e texto atual)
-        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
+        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite', transport='rest')
         # No seu app.py, onde você chama o model_chat.generate_content
         # Adicione o parâmetro request_options para forçar um timeout interno
         response = model_chat.generate_content(
