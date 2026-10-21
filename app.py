@@ -6,6 +6,7 @@ Created on Sun Oct 18 18:57:18 2026
 @authors: Elias Oliveira Serqueira & Lislei Jorge Patrizzi Martins
 @e-mail: elias.serqueira@uftm.edu.br
 """
+
 import os
 import io
 import wave
@@ -63,85 +64,60 @@ def pcm_to_wav(pcm_bytes, sample_rate=16000, channels=1, sample_width=2):
 
 @app.route('/transcrever', methods=['POST'])
 def transcrever_audio():
+    global chat_session # Permite modificar a sessão global
+    
     pcm_data = request.data
     if not pcm_data:
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
-    # --- LÊ OS SENSORES DOS HEADERS ---
-    temp_atual = request.headers.get("X-Temperatura", "Desconhecida")
-    umid_atual = request.headers.get("X-Umidade", "Desconhecida")
-    # ----------------------------------
-    
     try:
-        # 1. TRANSCRIÇÃO DO ÁUDIO DO USUÁRIO
+        # 1. TRANSCRIÇÃO E RESPOSTA (Gemini)
         wav_data = pcm_to_wav(pcm_data)
         audio_b64 = base64.b64encode(wav_data).decode('utf-8')
-        
-        # Modelo rápido para apenas transcrever (economiza tokens)
-        model_asr = genai.GenerativeModel('gemini-3.5-flash-lite', transport='rest')
-        asr_prompt = "Transcreva exatamente o que o usuário disse neste áudio em português. Se não houver fala, retorne apenas '...'."
-        
-        response_asr = model_asr.generate_content([
-            asr_prompt,
-            {"mime_type": "audio/wav",
-             "data": audio_b64}
-        ])
-        texto_usuario = response_asr.text.strip()
-        print(f"--- Usuário disse: {texto_usuario} ---")
 
-        # 2. BUSCAR AS ÚLTIMAS MENSAGENS DO BANCO
+        # 1. BUSCAR AS ÚLTIMAS MENSAGENS DO BANCO
         conn = get_db_connection()
         cur = conn.cursor()
+        # Pega as últimas 10 interações (5 do usuário, 5 da LIS) para dar contexto
         cur.execute("SELECT role, content FROM historico_chat ORDER BY id DESC LIMIT 10")
         linhas = cur.fetchall()
+        # Inverte para ficar na ordem cronológica correta (antigas primeiro)
         historico_recente = list(reversed(linhas))
-        
-        # SALVA O QUE O USUÁRIO ACABOU DE FALAR NO BANCO
-        if texto_usuario != "..." and texto_usuario != "":
-            cur.execute(
-                "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
-                ("user", texto_usuario)
-            )
-            conn.commit()
         cur.close()
         conn.close()
 
-        # 3. MONTAR O PROMPT COM MEMÓRIA E SENSORES
+        # 2. MONTAR O PROMPT COM MEMÓRIA
         contexto = ""
         for role, content in historico_recente:
             if role == "user":
                 contexto += f"Usuário: {content}\n"
             else:
                 contexto += f"LIS: {content}\n"
-
-        prompt_completo = (
-            "Você é a LIS (Local Intelligent System), uma assistente virtual acolhedora e cuidadora, projetada para ajudar idosos. "
-            "Fale de forma clara, pausada e sempre demonstre empatia e cuidado com a saúde do usuário. "
-            "Se o usuário falar algo que claramente não é para você (ruído), fique em silêncio seguido da emoção |ESPANTO. "
+                
+        prompt = (
+            "Você é a LIS (Local Intelligent System), uma assistente virtual MUITO expressiva. "
+            "Se o usuário não disser 'LIS', fique em silêncio seguido da emoção ESPANTO . "
+            "Se disser 'LIS', responda de forma ultra curta. "
             "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
-            "Emoções: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
-            f"INFORMAÇÃO DO AMBIENTE FÍSICO AGORA: Temperatura = {temp_atual}°C, Umidade = {umid_atual}%.\n"
-            "REGRAS DE SEGURANÇA PARA A SAÚDE DO IDOSO:\n"
-            f"1. Se a temperatura estiver acima de 30°C, alerte sobre o calor, recomende evitar exercícios físicos ao ar livre e beber água.\n"
-            f"2. Considere umidade abaixo de 60% como baixa e abaixo de 25% como alerta. Se estiver baixa ou em alerta, recomende beber muita água e usar umidificador.\n"
-            "3. Se o clima estiver bom, apenas converse normalmente.\n\n"
-            "DIRETRIZ PROATIVA: Se o usuário apenas cumprimentar (bom dia, boa tarde) ou perguntar como você está, "
-            "ALÉM de responder, você DEVE mencionar proativamente como está o clima atual e se há algum alerta de saúde (calor ou secura).\n\n"
-            f"HISTÓRICO DA CONVERSA:\n{contexto}\n"
-            f"Usuário: {texto_usuario}\n"
-            "LIS: "
+            "Escolha a emoção que combina com o contexto: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO. "
+            "Se o usuário te cumprimentar (bom dia, boa tarde), seja muito feliz e use ALEGRIA ou EXALTADO. "
+            "Usuário: LIS, bom dia! -> Sua resposta: 'Bom dia! Como posso ajudar?|ALEGRIA' "
+            "Abaixo está o histórico recente da conversa. Use-o para manter a coerência, "
+            "lembrar do que foi falado e não se repetir.\n\n"
+            f"HISTÓRICO:\n{contexto}\n"
+            "Agora, responda ao novo áudio do usuário."
+            "Agora responda à pergunta do usuário seguindo EXATAMENTE esse formato."
         )
-
-        # 4. CHAMAR O GEMINI PARA RESPONDER (com base no histórico e texto atual)
-        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite', transport='rest')
-        # No seu app.py, onde você chama o model_chat.generate_content
-        # Adicione o parâmetro request_options para forçar um timeout interno
-        response = model_chat.generate_content(
-            prompt_completo
-            )
         
+        # 3. CHAMAR O GEMINI (agora com o texto do histórico + áudio)
+        model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
+        response = model_chat.generate_content([
+            prompt_sistema,
+            {"mime_type": "audio/wav", "data": audio_b64}
+        ])
         
         texto_completo = response.text.strip()
+
         print(f"--- O Gemini respondeu: {texto_completo} ---")
         
         # Separa o texto da emoção
@@ -151,57 +127,70 @@ def transcrever_audio():
             texto_para_falar = texto_completo
             emocao = "NEUTRO"
 
-        # 5. TTS VIA EDGE (Microsoft)
-        # Verifica se há texto para falar. Se for vazio (só emoção), pula o TTS.
-        if texto_para_falar.strip() == "":
-            print("Sem texto para falar, retornando apenas a emoção.")
-            pcm_16k = b"" # Áudio vazio
-        else:
-            voice = "pt-BR-FranciscaNeural"
-            
-            async def gerar_audio():
-                communicate = edge_tts.Communicate(texto_para_falar, voice)
-                audio_bytes = b""
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_bytes += chunk["data"]
-                return audio_bytes
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            audio_mp3 = loop.run_until_complete(gerar_audio())
-            loop.close()
-
-            if not audio_mp3:
-                return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
-
-            # 6. CONVERSÃO E TRATAMENTO (Pydub)
-            audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
-            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-            audio = audio.low_pass_filter(3000)
-            audio = audio - 18  # Atenuação de volume
-            pcm_16k = audio.raw_data
-
-        # 7. SALVAR RESPOSTA DA LIS NO BANCO (Apenas se houver texto)
-        if texto_para_falar.strip() != "":
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
-                ("assistant", texto_para_falar)
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
+        # 2. TTS VIA EDGE (Microsoft)
+        # Usando a voz neural brasileira Francisca
+        voice = "pt-BR-FranciscaNeural"
         
-        # 8. ENVIA O PCM DE VOLTA PARA O ESP32
+        async def gerar_audio():
+            communicate = edge_tts.Communicate(texto_para_falar, voice)
+            audio_bytes = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+            return audio_bytes
+
+        # Executa a função assíncrona do edge-tts
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        audio_mp3 = loop.run_until_complete(gerar_audio())
+        loop.close()
+
+        if not audio_mp3:
+            return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
+
+        # 3. CONVERSÃO E TRATAMENTO (Pydub)
+        # Converte MP3 (Edge) para PCM 16kHz 16bits
+        audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
+        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+        
+        # Filtro passa-baixa para suavizar (opcional)
+        audio = audio.low_pass_filter(3000)
+        
+        # ATENUAÇÃO: Reduz o volume para não estourar o MAX98357
+        audio = audio - 18  # Se ficar baixo, mude para -6. Se estourar, mude para -15.
+        
+        pcm_16k = audio.raw_data
+
+        # 4. SALVAR NO BANCO (User e LIS)
+        # Salva o que o usuário disse (você pode transcrever o áudio antes ou salvar um placeholder)
+        # Para simplificar, vamos salvar a resposta da LIS e o texto que o Gemini entendeu.
+        # Se quiser salvar o que o usuário falou, você precisaria de uma chamada de ASR extra.
+        # Por enquanto, vamos salvar apenas a resposta da LIS para ela não se repetir.
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Salva a resposta da LIS
+        cur.execute(
+            "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
+            ("assistant", texto_para_falar) # texto_para_falar é a variável que você já usa
+        )
+        # Se você tiver o texto do usuário (ex: via transcrição), salve também como 'user'
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # 5. ENVIA O PCM DE VOLTA PARA O ESP32
+        # Formato: [10 bytes de texto da emoção][Resto do áudio PCM]
         emocao_padded = emocao.ljust(10, ' ').encode('utf-8')[:10]
+        
+        # Cria o arquivo final juntando a emoção + áudio
         payload_final = emocao_padded + pcm_16k
 
+        # Envia como um arquivo octet-stream simples
         return app.response_class(payload_final, mimetype='application/octet-stream')
 
     except Exception as e:
-        print(f"ERRO NO SERVIDOR: {e}")
+        print(f"Erro: {e}")
         return jsonify({"status": "erro", "detalhes": str(e)}), 500
 
 if __name__ == '__main__':
