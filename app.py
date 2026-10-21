@@ -68,6 +68,11 @@ def transcrever_audio():
     if not pcm_data:
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
+    # --- LÊ OS SENSORES DOS HEADERS ---
+    temp_atual = request.headers.get("X-Temperatura", "Desconhecida")
+    umid_atual = request.headers.get("X-Umidade", "Desconhecida")
+    # ----------------------------------
+    
     try:
         # 1. TRANSCRIÇÃO DO ÁUDIO DO USUÁRIO
         wav_data = pcm_to_wav(pcm_data)
@@ -115,6 +120,8 @@ def transcrever_audio():
             "Se disser 'LIS', responda de forma ultra curta. "
             "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
             "Escolha a emoção: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
+            f"INFORMAÇÃO DO AMBIENTE FÍSICO AGORA: Temperatura = {temp_atual}°C, Umidade = {umid_atual}%.\n"
+            "Use esses dados se o usuário perguntar sobre o clima no local.\n\n"            
             f"HISTÓRICO DA CONVERSA:\n{contexto}\n"
             f"Usuário: {texto_usuario}\n"
             "LIS: "
