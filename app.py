@@ -70,6 +70,8 @@ def transcrever_audio():
 
     temp_atual = request.headers.get("X-Temperatura", "Desconhecida")
     umid_atual = request.headers.get("X-Umidade", "Desconhecida")
+    hora_atual = request.headers.get("X-Hora", "Desconhecida")
+    data_atual = request.headers.get("X-Data", "Desconhecida")    
     is_checkin = request.headers.get("X-Checkin-Automatico") == "true"
 
     try:
@@ -121,6 +123,8 @@ def transcrever_audio():
             "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
             "Emoções: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
             f"INFORMAÇÃO DO AMBIENTE FÍSICO AGORA: Temperatura = {temp_atual}°C, Umidade = {umid_atual}%.\n"
+            f"DATA E HORA ATUAIS: Hoje é dia {data_atual}, e agora são exatamente {hora_atual}.\n"
+            "Use essa informação caso o usuário pergunte as horas ou a data.\n"
             "REGRAS DE SEGURANÇA PARA A SAÚDE DO IDOSO:\n"
             f"1. Se a temperatura estiver acima de 30°C, alerte sobre o calor, recomende evitar exercícios físicos ao ar livre e beber água.\n"
             f"2. Considere umidade abaixo de 60% como baixa e abaixo de 25% como alerta. Se estiver baixa ou em alerta, recomende beber muita água e usar umidificador.\n"
