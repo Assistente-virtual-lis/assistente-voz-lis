@@ -68,24 +68,27 @@ def transcrever_audio():
     if not pcm_data:
         return jsonify({"erro": "Nenhum áudio recebido"}), 400
 
-    # LÊ OS SENSORES DOS HEADERS (O ESP32 já está enviando isso)
     temp_atual = request.headers.get("X-Temperatura", "Desconhecida")
     umid_atual = request.headers.get("X-Umidade", "Desconhecida")
+    is_checkin = request.headers.get("X-Checkin-Automatico") == "true"
 
     try:
-        # 1. TRANSCRIÇÃO DO ÁUDIO DO USUÁRIO
-        wav_data = pcm_to_wav(pcm_data)
-        audio_b64 = base64.b64encode(wav_data).decode('utf-8')
-        
-        model_asr = genai.GenerativeModel('gemini-3.5-flash-lite')
-        asr_prompt = "Transcreva exatamente o que o usuário disse neste áudio em português. Se não houver fala, retorne apenas '...'."
-        
-        response_asr = model_asr.generate_content([
-            asr_prompt,
-            {"mime_type": "audio/wav", "data": audio_b64}
-        ])
-        texto_usuario = response_asr.text.strip()
-        print(f"--- Usuário disse: {texto_usuario} ---")
+        # 1. TRANSCRIÇÃO (ou Check-in)
+        if is_checkin:
+            print("--- Check-in automático disparado ---")
+            texto_usuario = "[SISTEMA]: Faça um check-in proativo agora."
+        else:
+            wav_data = pcm_to_wav(pcm_data)
+            audio_b64 = base64.b64encode(wav_data).decode('utf-8')
+            model_asr = genai.GenerativeModel('gemini-3.5-flash-lite')
+            asr_prompt = "Transcreva exatamente o que o usuário disse neste áudio em português. Se não houver fala, retorne apenas '...'."
+            
+            response_asr = model_asr.generate_content([
+                asr_prompt,
+                {"mime_type": "audio/wav", "data": audio_b64}
+            ])
+            texto_usuario = response_asr.text.strip()
+            print(f"--- Usuário disse: {texto_usuario} ---")
 
         # 2. BUSCAR AS ÚLTIMAS MENSAGENS DO BANCO
         conn = get_db_connection()
@@ -94,7 +97,6 @@ def transcrever_audio():
         linhas = cur.fetchall()
         historico_recente = list(reversed(linhas))
         
-        # SALVA O QUE O USUÁRIO FALOU
         if texto_usuario != "..." and texto_usuario != "":
             cur.execute(
                 "INSERT INTO historico_chat (role, content) VALUES (%s, %s)",
@@ -104,7 +106,7 @@ def transcrever_audio():
         cur.close()
         conn.close()
 
-        # 3. MONTAR O PROMPT COM MEMÓRIA E SENSORES
+        # 3. MONTAR O PROMPT
         contexto = ""
         for role, content in historico_recente:
             if role == "user":
@@ -112,7 +114,6 @@ def transcrever_audio():
             else:
                 contexto += f"LIS: {content}\n"
 
-        # AQUI ESTÁ A CORREÇÃO DOS SENSORES E DA FLEXIBILIDADE DA PALAVRA "LIS"
         prompt_completo = (
             "Você é a LIS (Local Intelligent System), uma assistente virtual acolhedora e cuidadora, projetada para ajudar idosos. "
             "Fale de forma clara, pausada e sempre demonstre empatia e cuidado com a saúde do usuário. "
@@ -124,17 +125,14 @@ def transcrever_audio():
             f"1. Se a temperatura estiver acima de 30°C, alerte sobre o calor, recomende evitar exercícios físicos ao ar livre e beber água.\n"
             f"2. Considere umidade abaixo de 60% como baixa e abaixo de 25% como alerta. Se estiver baixa ou em alerta, recomende beber muita água e usar umidificador.\n"
             "3. Se o clima estiver bom, apenas converse normalmente.\n\n"
-            "DIRETRIZ PROATIVA: Se o usuário apenas cumprimentar (bom dia, boa tarde) ou perguntar como você está, "
-            "ALÉM de responder, você DEVE mencionar proativamente como está o clima atual e se há algum alerta de saúde (calor ou secura).\n\n"
             f"HISTÓRICO DA CONVERSA:\n{contexto}\n"
             f"Usuário: {texto_usuario}\n"
             "LIS: "
         )
 
-        # 4. CHAMAR O GEMINI PARA RESPONDER
+        # 4. CHAMAR O GEMINI
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         response = model_chat.generate_content(prompt_completo)
-        
         texto_completo = response.text.strip()
         print(f"--- O Gemini respondeu: {texto_completo} ---")
         
@@ -146,7 +144,6 @@ def transcrever_audio():
 
         # 5. TTS VIA EDGE (Microsoft)
         if texto_para_falar.strip() == "":
-            print("Sem texto para falar, retornando apenas a emoção.")
             pcm_16k = b"" 
         else:
             voice = "pt-BR-FranciscaNeural"
@@ -166,14 +163,13 @@ def transcrever_audio():
             if not audio_mp3:
                 return jsonify({"status": "erro", "detalhes": "TTS nao retornou audio"}), 500
 
-            # 6. CONVERSÃO E TRATAMENTO
             audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
             audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
             audio = audio.low_pass_filter(3000)
             audio = audio - 18
             pcm_16k = audio.raw_data
 
-        # 7. SALVAR RESPOSTA NO BANCO
+        # 6. SALVAR NO BANCO
         if texto_para_falar.strip() != "":
             conn = get_db_connection()
             cur = conn.cursor()
@@ -185,7 +181,7 @@ def transcrever_audio():
             cur.close()
             conn.close()
         
-        # 8. ENVIA PARA O ESP32
+        # 7. ENVIA PARA O ESP32
         emocao_padded = emocao.ljust(10, ' ').encode('utf-8')[:10]
         payload_final = emocao_padded + pcm_16k
 
@@ -194,7 +190,6 @@ def transcrever_audio():
     except Exception as e:
         print(f"ERRO NO SERVIDOR: {e}")
         return jsonify({"status": "erro", "detalhes": str(e)}), 500
-
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
