@@ -140,7 +140,7 @@ def transcrever_audio():
         model_chat = genai.GenerativeModel('gemini-3.5-flash-lite')
         response = model_chat.generate_content(prompt_completo)
         texto_completo = response.text.strip()
-        print(f"--- O Gemini respondeu: {texto_completo} ---")
+        print(f"--- A LIS respondeu: {texto_completo} ---")
         
         if '|' in texto_completo:
             texto_para_falar, emocao = texto_completo.rsplit('|', 1)
