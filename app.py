@@ -192,10 +192,22 @@ def transcrever_audio():
         payload_final = emocao_padded + pcm_16k
 
         return app.response_class(payload_final, mimetype='application/octet-stream')
-
+    
     except Exception as e:
         print(f"ERRO NO SERVIDOR: {e}")
-        return jsonify({"status": "erro", "detalhes": str(e)}), 500
+        erro_str = str(e)
+        
+        # Se o erro for de cota do Gemini (429)
+        if "429" in erro_str or "quota" in erro_str.lower():
+            return jsonify({
+                "status": "erro", 
+                "detalhes": "Cota de uso da IA excedida. Tente novamente mais tarde."
+            }), 429
+            
+        # Se for qualquer outro erro (500)
+        return jsonify({"status": "erro", "detalhes": erro_str}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
