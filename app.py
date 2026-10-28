@@ -87,7 +87,8 @@ def transcrever_audio():
                 file=("audio.wav", wav_data),
                 model="whisper-large-v3",
                 language="pt",
-                response_format="json"
+                response_format="json",
+                prompt="LIS, temperatura, umidade, água, saúde, remédio, dor, médico, família." 
             )
             texto_usuario = transcription.text.strip()
             print(f"--- Usuário disse: {texto_usuario} ---")
