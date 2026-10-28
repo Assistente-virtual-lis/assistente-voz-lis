@@ -190,7 +190,7 @@ def transcrever_audio():
             audio = AudioSegment.from_file(io.BytesIO(audio_mp3), format="mp3")
             audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
             audio = audio.low_pass_filter(3000)
-            audio = audio - 18
+            audio = audio - 20
             pcm_16k = audio.raw_data
             
             del audio_mp3
