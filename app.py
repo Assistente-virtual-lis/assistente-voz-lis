@@ -122,10 +122,10 @@ def transcrever_audio():
             "Você é a LIS (Local Intelligent System), uma assistente virtual acolhedora e cuidadora, projetada para ajudar idosos. "
             "Fale de forma clara, pausada e sempre demonstre empatia e cuidado com a saúde do usuário. "
             "Se o usuário falar algo que claramente não é para você (ruído), fique em silêncio seguido da emoção |ESPANTO. "
-            "REGRA DE OURO: Você DEVE terminar TODA resposta com uma barra vertical '|' e uma emoção. "
+            "REGRA DE OURO ABSOLUTA: Você DEVE terminar TODA e QUALQUER resposta com uma barra vertical '|' seguida de UMA emoção. "
             "IMPORTANTE: Seja extremamente concisa. Limite suas respostas a no máximo 2 ou 3 frases curtas. "
             "Vá direto ao ponto para não cansar o usuário.\n\n"
-            "Emoções: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
+            "Emoções permitidas: ALEGRIA, TRISTEZA, ESPANTO, NERVOSO, EXALTADO ou NEUTRO.\n\n"
             f"INFORMAÇÃO DO AMBIENTE FÍSICO AGORA: Temperatura = {temp_atual}°C, Umidade = {umid_atual}%.\n"
             f"DATA E HORA ATUAIS: Hoje é dia {data_atual}, e agora são exatamente {hora_atual}.\n"
             "REGRAS DE SEGURANÇA PARA A SAÚDE DO IDOSO:\n"
@@ -137,6 +137,7 @@ def transcrever_audio():
             "LIS: "
         )
 
+
         # 4. CHAMAR O GROQ PARA RESPONDER
         chat_completion = client_groq.chat.completions.create(
             messages=[
@@ -145,7 +146,7 @@ def transcrever_audio():
             ],
             model="openai/gpt-oss-120b", # Modelo rápido e com cota de 1000/dia
             temperature=0.7,
-            max_tokens=150 # Limita o tamanho para respostas curtas
+            max_tokens=500 # Limita o tamanho para respostas curtas
         )
         
         texto_completo = chat_completion.choices[0].message.content
